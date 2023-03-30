@@ -1,11 +1,27 @@
 local M = {}
 local Log = require "lvim.core.log"
 
-M.config = function()
+function M.config()
   lvim.builtin.treesitter = {
     on_config_done = nil,
-    ensure_installed = {}, -- one of "all", "maintained" (parsers with maintainers), or a list of languages
+
+    -- A list of parser names, or "all"
+    ensure_installed = {},
+
+    -- List of parsers to ignore installing (for "all")
     ignore_install = {},
+
+    -- A directory to install the parsers into.
+    -- By default parsers are installed to either the package dir, or the "site" dir.
+    -- If a custom path is used (not nil) it must be added to the runtimepath.
+    parser_install_dir = nil,
+
+    -- Install parsers synchronously (only applied to `ensure_installed`)
+    sync_install = false,
+
+    -- Automatically install missing parsers when entering buffer
+    auto_install = true,
+
     matchup = {
       enable = false, -- mandatory, false will disable the whole extension
       -- disable = { "c", "ruby" },  -- optional, list of language that will be disabled
@@ -13,7 +29,14 @@ M.config = function()
     highlight = {
       enable = true, -- false will disable the whole extension
       additional_vim_regex_highlighting = false,
-      disable = { "latex" },
+      disable = function(lang, buf)
+        if vim.tbl_contains({ "latex" }, lang) then
+          return true
+        end
+
+        local status_ok, big_file_detected = pcall(vim.api.nvim_buf_get_var, buf, "bigfile_disable_treesitter")
+        return status_ok and big_file_detected
+      end,
     },
     context_commentstring = {
       enable = true,
@@ -72,7 +95,7 @@ M.config = function()
   }
 end
 
-M.setup = function()
+function M.setup()
   -- avoid running in headless mode since it's harder to detect failures
   if #vim.api.nvim_list_uis() == 0 then
     Log:debug "headless mode detected, skipping running setup for treesitter"
@@ -92,6 +115,11 @@ M.setup = function()
   if lvim.builtin.treesitter.on_config_done then
     lvim.builtin.treesitter.on_config_done(treesitter_configs)
   end
+
+  -- handle deprecated API, https://github.com/windwp/nvim-autopairs/pull/324
+  local ts_utils = require "nvim-treesitter.ts_utils"
+  ts_utils.is_in_node_range = vim.treesitter.is_in_node_range
+  ts_utils.get_node_range = vim.treesitter.get_node_range
 end
 
 return M

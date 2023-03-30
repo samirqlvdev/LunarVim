@@ -3,25 +3,6 @@ local Log = require "lvim.core.log"
 
 --- Load the default set of autogroups and autocommands.
 function M.load_defaults()
-  vim.api.nvim_create_autocmd({ "FileType" }, {
-    pattern = {
-      "Jaq",
-      "qf",
-      "help",
-      "man",
-      "lspinfo",
-      "spectre_panel",
-      "lir",
-      "DressingSelect",
-      "tsplayground",
-    },
-    callback = function()
-      vim.cmd [[
-      nnoremap <silent> <buffer> q :close<CR>
-      set nobuflisted
-    ]]
-    end,
-  })
   local definitions = {
     {
       "TextYankPost",
@@ -30,7 +11,7 @@ function M.load_defaults()
         pattern = "*",
         desc = "Highlight text on yank",
         callback = function()
-          require("vim.highlight").on_yank { higroup = "Search", timeout = 100 }
+          vim.highlight.on_yank { higroup = "Search", timeout = 100 }
         end,
       },
     },
@@ -46,32 +27,43 @@ function M.load_defaults()
       "FileType",
       {
         group = "_filetype_settings",
-        pattern = "qf",
-        command = "set nobuflisted",
-      },
-    },
-    {
-      "FileType",
-      {
-        group = "_filetype_settings",
-        pattern = { "gitcommit", "markdown" },
-        command = "setlocal wrap spell",
+        pattern = { "lua" },
+        desc = "fix gf functionality inside .lua files",
+        callback = function()
+          ---@diagnostic disable: assign-type-mismatch
+          -- credit: https://github.com/sam4llis/nvim-lua-gf
+          vim.opt_local.include = [[\v<((do|load)file|require|reload)[^''"]*[''"]\zs[^''"]+]]
+          vim.opt_local.includeexpr = "substitute(v:fname,'\\.','/','g')"
+          vim.opt_local.suffixesadd:prepend ".lua"
+          vim.opt_local.suffixesadd:prepend "init.lua"
+
+          for _, path in pairs(vim.api.nvim_list_runtime_paths()) do
+            vim.opt_local.path:append(path .. "/lua")
+          end
+        end,
       },
     },
     {
       "FileType",
       {
         group = "_buffer_mappings",
-        pattern = { "qf", "help", "man", "floaterm", "lspinfo", "lsp-installer", "null-ls-info" },
-        command = "nnoremap <silent> <buffer> q :close<CR>",
-      },
-    },
-    {
-      { "BufWinEnter", "BufRead", "BufNewFile" },
-      {
-        group = "_format_options",
-        pattern = "*",
-        command = "setlocal formatoptions-=c formatoptions-=r formatoptions-=o",
+        pattern = {
+          "qf",
+          "help",
+          "man",
+          "floaterm",
+          "lspinfo",
+          "lir",
+          "lsp-installer",
+          "null-ls-info",
+          "tsplayground",
+          "DressingSelect",
+          "Jaq",
+        },
+        callback = function()
+          vim.keymap.set("n", "q", "<cmd>close<cr>", { buffer = true })
+          vim.opt_local.buflisted = false
+        end,
       },
     },
     {
@@ -89,8 +81,6 @@ function M.load_defaults()
         pattern = "alpha",
         callback = function()
           vim.cmd [[
-            nnoremap <silent> <buffer> q :qa<CR>
-            nnoremap <silent> <buffer> <esc> :qa<CR>
             set nobuflisted
           ]]
         end,
@@ -104,6 +94,57 @@ function M.load_defaults()
         callback = function()
           vim.opt_local.number = false
           vim.opt_local.relativenumber = false
+        end,
+      },
+    },
+    {
+      "ColorScheme",
+      {
+        group = "_lvim_colorscheme",
+        callback = function()
+          if lvim.builtin.breadcrumbs.active then
+            require("lvim.core.breadcrumbs").get_winbar()
+          end
+          local statusline_hl = vim.api.nvim_get_hl_by_name("StatusLine", true)
+          local cursorline_hl = vim.api.nvim_get_hl_by_name("CursorLine", true)
+          local normal_hl = vim.api.nvim_get_hl_by_name("Normal", true)
+          vim.api.nvim_set_hl(0, "CmpItemKindCopilot", { fg = "#6CC644" })
+          vim.api.nvim_set_hl(0, "CmpItemKindTabnine", { fg = "#CA42F0" })
+          vim.api.nvim_set_hl(0, "CmpItemKindCrate", { fg = "#F64D00" })
+          vim.api.nvim_set_hl(0, "CmpItemKindEmoji", { fg = "#FDE030" })
+          vim.api.nvim_set_hl(0, "SLCopilot", { fg = "#6CC644", bg = statusline_hl.background })
+          vim.api.nvim_set_hl(0, "SLGitIcon", { fg = "#E8AB53", bg = cursorline_hl.background })
+          vim.api.nvim_set_hl(0, "SLBranchName", { fg = normal_hl.foreground, bg = cursorline_hl.background })
+          vim.api.nvim_set_hl(0, "SLSeparator", { fg = cursorline_hl.background, bg = statusline_hl.background })
+        end,
+      },
+    },
+    { -- taken from AstroNvim
+      "BufEnter",
+      {
+        group = "_dir_opened",
+        once = true,
+        callback = function(args)
+          local bufname = vim.api.nvim_buf_get_name(args.buf)
+          if require("lvim.utils").is_directory(bufname) then
+            vim.api.nvim_del_augroup_by_name "_dir_opened"
+            vim.cmd "do User DirOpened"
+            vim.api.nvim_exec_autocmds("BufEnter", {})
+          end
+        end,
+      },
+    },
+    { -- taken from AstroNvim
+      { "BufRead", "BufWinEnter", "BufNewFile" },
+      {
+        group = "_file_opened",
+        once = true,
+        callback = function(args)
+          local buftype = vim.api.nvim_get_option_value("buftype", { buf = args.buf })
+          if not (vim.fn.expand "%" == "" or buftype == "nofile") then
+            vim.cmd "do User FileOpened"
+            require("lvim.lsp").setup()
+          end
         end,
       },
     },
@@ -144,7 +185,9 @@ function M.disable_format_on_save()
 end
 
 function M.configure_format_on_save()
-  if lvim.format_on_save then
+  if type(lvim.format_on_save) == "table" and lvim.format_on_save.enabled then
+    M.enable_format_on_save()
+  elseif lvim.format_on_save == true then
     M.enable_format_on_save()
   else
     M.disable_format_on_save()
@@ -164,15 +207,13 @@ function M.toggle_format_on_save()
 end
 
 function M.enable_reload_config_on_save()
-  local user_config_file = require("lvim.config"):get_user_config_path()
+  -- autocmds require forward slashes (even on windows)
+  local pattern = get_config_dir():gsub("\\", "/") .. "/*.lua"
 
-  if vim.loop.os_uname().version:match "Windows" then
-    -- autocmds require forward slashes even on windows
-    user_config_file = user_config_file:gsub("\\", "/")
-  end
+  vim.api.nvim_create_augroup("lvim_reload_config_on_save", {})
   vim.api.nvim_create_autocmd("BufWritePost", {
-    group = "_general_settings",
-    pattern = user_config_file,
+    group = "lvim_reload_config_on_save",
+    pattern = pattern,
     desc = "Trigger LvimReload on saving config.lua",
     callback = function()
       require("lvim.config"):reload()
@@ -190,6 +231,7 @@ function M.enable_transparent_mode()
         "NormalNC",
         "TelescopeBorder",
         "NvimTreeNormal",
+        "NvimTreeNormalNC",
         "EndOfBuffer",
         "MsgArea",
       }

@@ -9,6 +9,7 @@ local generic_opts = {
   visual_mode = generic_opts_any,
   visual_block_mode = generic_opts_any,
   command_mode = generic_opts_any,
+  operator_pending_mode = generic_opts_any,
   term_mode = { silent = true },
 }
 
@@ -19,6 +20,7 @@ local mode_adapters = {
   visual_mode = "v",
   visual_block_mode = "x",
   command_mode = "c",
+  operator_pending_mode = "o",
 }
 
 ---@class Keys
@@ -28,6 +30,7 @@ local mode_adapters = {
 ---@field visual_mode table
 ---@field visual_block_mode table
 ---@field command_mode table
+---@field operator_pending_mode table
 
 local defaults = {
   insert_mode = {
@@ -102,21 +105,6 @@ if vim.fn.has "mac" == 1 then
   defaults.normal_mode["<A-Left>"] = defaults.normal_mode["<C-Left>"]
   defaults.normal_mode["<A-Right>"] = defaults.normal_mode["<C-Right>"]
   Log:debug "Activated mac keymappings"
-end
-
--- Unsets all keybindings defined in keymaps
--- @param keymaps The table of key mappings containing a list per mode (normal_mode, insert_mode, ..)
-function M.clear(keymaps)
-  local default = M.get_defaults()
-  for mode, mappings in pairs(keymaps) do
-    local translated_mode = mode_adapters[mode] or mode
-    for key, _ in pairs(mappings) do
-      -- some plugins may override default bindings that the user hasn't manually overridden
-      if default[mode][key] ~= nil or (default[translated_mode] ~= nil and default[translated_mode][key] ~= nil) then
-        pcall(vim.keymap.del, translated_mode, key)
-      end
-    end
-  end
 end
 
 -- Unsets all keybindings defined in keymaps

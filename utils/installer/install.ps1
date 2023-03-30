@@ -1,8 +1,11 @@
 #Requires -Version 7.1
 $ErrorActionPreference = "Stop" # exit when command fails
+if ($PSVersionTable.PSVersion -lt 7.1) {
+    Write-Error "Powershell version needs to be greater than 7.1!"
+}
 
 # set script variables
-$LV_BRANCH = $LV_BRANCH ?? "rolling"
+$LV_BRANCH = $LV_BRANCH ?? "master"
 $LV_REMOTE = $LV_REMOTE ??  "lunarvim/lunarvim.git"
 $INSTALL_PREFIX = $INSTALL_PREFIX ?? "$HOME\.local"
 
@@ -217,7 +220,7 @@ function setup_lvim() {
     $exampleConfig = "$env:LUNARVIM_BASE_DIR\utils\installer\config_win.example.lua"
     Copy-Item -Force "$exampleConfig" "$env:LUNARVIM_CONFIG_DIR\config.lua"
 
-    Write-Host "Make sure to run `:PackerSync` at first launch" -ForegroundColor Green
+    Write-Host "Make sure to run `:Lazy sync` at first launch" -ForegroundColor Green
 
     create_alias
 
@@ -231,7 +234,7 @@ function setup_lvim() {
 function validate_lunarvim_files() {
     Set-Alias lvim "$INSTALL_PREFIX\bin\lvim.ps1"
     try {
-        $verify_version_cmd='if v:errmsg != "" | cquit | else | quit | endif'
+        $verify_version_cmd="if v:errmsg != `"`" | cquit | else | quit | endif"
         Invoke-Command -ScriptBlock { lvim --headless -c 'LvimUpdate' -c "$verify_version_cmd" } -ErrorAction SilentlyContinue
     }
     catch {
@@ -271,7 +274,7 @@ function create_alias {
         New-Item -Path $PROFILE -ItemType "file" -Force
     }
 
-    Add-Content -Path $PROFILE -Value $("`r`nSet-Alias lvim $lvim_bin")
+    Add-Content -Path $PROFILE -Value $("`r`nSet-Alias lvim '$lvim_bin'")
 
     Write-Host 'To use the new alias in this window reload your profile with: `. $PROFILE`' -ForegroundColor Green
 }

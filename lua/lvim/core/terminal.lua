@@ -18,7 +18,7 @@ M.config = function()
     -- direction = 'vertical' | 'horizontal' | 'window' | 'float',
     direction = "float",
     close_on_exit = true, -- close the terminal window when the process exits
-    shell = vim.o.shell, -- change the default shell
+    shell = nil, -- change the default shell
     -- This field is only relevant if direction is set to 'float'
     float_opts = {
       -- The border key is *almost* the same as 'nvim_win_open'
@@ -36,36 +36,70 @@ M.config = function()
       },
     },
     -- Add executables on the config.lua
-    -- { exec, keymap, name}
-    -- lvim.builtin.terminal.execs = {{}} to overwrite
+    -- { cmd, keymap, description, direction, size }
+    -- lvim.builtin.terminal.execs = {...} to overwrite
     -- lvim.builtin.terminal.execs[#lvim.builtin.terminal.execs+1] = {"gdb", "tg", "GNU Debugger"}
     -- TODO: pls add mappings in which key and refactor this
     execs = {
-      { vim.o.shell, "<M-1>", "Horizontal Terminal", "horizontal", 10 },
-      { vim.o.shell, "<M-2>", "Vertical Terminal", "vertical", 60 },
-      { vim.o.shell, "<M-3>", "Float Terminal", "float", nil },
+      { nil, "<M-1>", "Horizontal Terminal", "horizontal", 0.3 },
+      { nil, "<M-2>", "Vertical Terminal", "vertical", 0.4 },
+      { nil, "<M-3>", "Float Terminal", "float", nil },
     },
   }
+end
+
+--- Get current buffer size
+---@return {width: number, height: number}
+local function get_buf_size()
+  local cbuf = vim.api.nvim_get_current_buf()
+  local bufinfo = vim.tbl_filter(function(buf)
+    return buf.bufnr == cbuf
+  end, vim.fn.getwininfo(vim.api.nvim_get_current_win()))[1]
+  if bufinfo == nil then
+    return { width = -1, height = -1 }
+  end
+  return { width = bufinfo.width, height = bufinfo.height }
+end
+
+--- Get the dynamic terminal size in cells
+---@param direction number
+---@param size number
+---@return integer
+local function get_dynamic_terminal_size(direction, size)
+  size = size or lvim.builtin.terminal.size
+  if direction ~= "float" and tostring(size):find(".", 1, true) then
+    size = math.min(size, 1.0)
+    local buf_sizes = get_buf_size()
+    local buf_size = direction == "horizontal" and buf_sizes.height or buf_sizes.width
+    return buf_size * size
+  else
+    return size
+  end
+end
+
+M.init = function()
+  for i, exec in pairs(lvim.builtin.terminal.execs) do
+    local direction = exec[4] or lvim.builtin.terminal.direction
+
+    local opts = {
+      cmd = exec[1] or lvim.builtin.terminal.shell or vim.o.shell,
+      keymap = exec[2],
+      label = exec[3],
+      -- NOTE: unable to consistently bind id/count <= 9, see #2146
+      count = i + 100,
+      direction = direction,
+      size = function()
+        return get_dynamic_terminal_size(direction, exec[5])
+      end,
+    }
+
+    M.add_exec(opts)
+  end
 end
 
 M.setup = function()
   local terminal = require "toggleterm"
   terminal.setup(lvim.builtin.terminal)
-
-  for i, exec in pairs(lvim.builtin.terminal.execs) do
-    local opts = {
-      cmd = exec[1],
-      keymap = exec[2],
-      label = exec[3],
-      -- NOTE: unable to consistently bind id/count <= 9, see #2146
-      count = i + 100,
-      direction = exec[4] or lvim.builtin.terminal.direction,
-      size = exec[5] or lvim.builtin.terminal.size,
-    }
-
-    M.add_exec(opts)
-  end
-
   if lvim.builtin.terminal.on_config_done then
     lvim.builtin.terminal.on_config_done(terminal)
   end
@@ -79,7 +113,7 @@ M.add_exec = function(opts)
   end
 
   vim.keymap.set({ "n", "t" }, opts.keymap, function()
-    M._exec_toggle { cmd = opts.cmd, count = opts.count, direction = opts.direction, size = opts.size }
+    M._exec_toggle { cmd = opts.cmd, count = opts.count, direction = opts.direction, size = opts.size() }
   end, { desc = opts.label, noremap = true, silent = true })
 end
 
